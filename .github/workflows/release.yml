@@ -1,0 +1,43 @@
+name: release
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2 
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 14
+      - name: Install dependencies and build
+        run: |
+          npm install
+          PUBLIC_URL=/builds/$GITHUB_SHA npm run build
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+      - name: Upload build to AWS S3
+        run: aws s3 cp --recursive ./build ${{secrets.AWS_BUCKET_ID}}/builds/$GITHUB_SHA
+      - name: Update AWS Cloudfront dirstribution configuration
+        run: |
+          INDEX_HTML_PATH=/builds/$GITHUB_SHA/index.html
+          DISTRIBUTION_CONFIG_RESPONSE=$(aws cloudfront get-distribution-config --id ${{secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID}})
+
+          ETAG=$(echo $DISTRIBUTION_CONFIG_RESPONSE | jq -r '.ETag')
+
+          DISTRIBUTION_CONFIG=$(echo $DISTRIBUTION_CONFIG_RESPONSE | jq '.DistributionConfig')
+          DISTRIBUTION_CONFIG=$(echo $DISTRIBUTION_CONFIG | jq 'setpath(["DefaultRootObject"]; $indexHTMLPath)' --arg indexHTMLPath $INDEX_HTML_PATH)
+          DISTRIBUTION_CONFIG=$(echo $DISTRIBUTION_CONFIG | jq 'setpath(["CustomErrorResponses", "Items", 0, "ResponsePagePath"]; $indexHTMLPath)' --arg indexHTMLPath $INDEX_HTML_PATH)
+          DISTRIBUTION_CONFIG=$(echo $DISTRIBUTION_CONFIG | jq 'setpath(["CustomErrorResponses", "Items", 1, "ResponsePagePath"]; $indexHTMLPath)' --arg indexHTMLPath $INDEX_HTML_PATH)
+
+          echo $DISTRIBUTION_CONFIG > distribution_config.json
+
+          aws cloudfront update-distribution \
+            --id ${{secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID}} \
+            --if-match $ETAG \
+            --distribution-config file://distribution_config.json
