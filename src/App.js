@@ -20,7 +20,7 @@ function App() {
             setState(true)
           }}
         >
-          Click me to load lazy guy
+          Click me to load lazy component
         </button>
         <Suspense fallback={null}>{state ? <Lazy /> : null}</Suspense>
         <a

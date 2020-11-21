@@ -1,7 +1,5 @@
-import React from 'react'
-
 const LazyComponent = () => {
-  return <div>HELLO IM LAZY GUY YO</div>
+  return <div>Hello, I'm a lazy component</div>
 }
 
 export default LazyComponent
